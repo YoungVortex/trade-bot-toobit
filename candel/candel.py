@@ -15,23 +15,21 @@ def export_candles(json_file, output_file="chart.png"):
     df = pd.DataFrame(data)
 
     # Rename columns
-    df = df.rename(columns={
+    df.rename(columns={
         "open_time": "Date",
         "open": "Open",
         "high": "High",
         "low": "Low",
         "close": "Close",
         "volume": "Volume",
-    })
+    }, inplace=True)
 
     # Convert timestamp
     df["Date"] = pd.to_datetime(df["Date"], unit="ms")
 
     # Convert numeric columns
-    numeric_columns = ["Open", "High", "Low", "Close", "Volume"]
-
-    for col in numeric_columns:
-        df[col] = pd.to_numeric(df[col], errors="raise")
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        df[col] = pd.to_numeric(df[col])
 
     # Keep only required columns
     df = df[["Date", "Open", "High", "Low", "Close", "Volume"]]
@@ -39,40 +37,47 @@ def export_candles(json_file, output_file="chart.png"):
     # Set datetime index
     df.set_index("Date", inplace=True)
 
-    # Sort by time
-    df.sort_index(inplace=True)
+    # ---------------- Market Colors ---------------- #
 
-    # ---------------- DEBUG ----------------
-    print("\nColumns:")
-    print(df.columns)
-
-    print("\nData Types:")
-    print(df.dtypes)
-
-    print("\nFirst Rows:")
-    print(df.head())
-    # ---------------------------------------
-
-    # TradingView-like colors
     mc = mpf.make_marketcolors(
-        up="#26a69a",
-        down="#ef5350",
-        edge="inherit",
-        wick="inherit",
-        volume="inherit",
+        up="white",
+        down="#808080",
+
+        edge={
+            "up": "white",
+            "down": "#808080",
+        },
+
+        wick={
+            "up": "white",
+            "down": "#808080",
+        },
+
+        volume={
+            "up": "white",
+            "down": "#808080",
+        },
     )
 
     style = mpf.make_mpf_style(
         base_mpf_style="nightclouds",
         marketcolors=mc,
+
         facecolor="#131722",
         figcolor="#131722",
-        gridcolor="#2A2E39",
+
         gridstyle="-",
+        gridcolor="#2A2E39",
+
+        y_on_right=True,
+
         rc={
             "axes.labelcolor": "white",
+            "axes.edgecolor": "#555555",
             "xtick.color": "white",
             "ytick.color": "white",
+            "figure.facecolor": "#131722",
+            "savefig.facecolor": "#131722",
         },
     )
 
@@ -80,9 +85,15 @@ def export_candles(json_file, output_file="chart.png"):
         df,
         type="candle",
         style=style,
+
         volume=True,
+
         figsize=(16, 9),
+
         tight_layout=True,
+
+        xrotation=0,
+
         savefig=dict(
             fname=output_file,
             dpi=300,
@@ -90,7 +101,7 @@ def export_candles(json_file, output_file="chart.png"):
         ),
     )
 
-    print(f"\nChart saved to: {output_file}")
+    print(f"Saved: {output_file}")
 
 
 if __name__ == "__main__":
