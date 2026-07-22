@@ -95,6 +95,108 @@ def pivots(df, left=5, right=5):
     )
 
 
+def smart_money(df, swing_length=5):
+    """Detect BOS/CHoCH, Order Blocks, and Fair Value Gaps."""
+    o = df["Open"].values
+    h = df["High"].values
+    l = df["Low"].values
+    c = df["Close"].values
+    n = len(df)
+
+    # --- Swing structure ---
+    ph, pl = pivots(df, left=swing_length, right=swing_length)
+    ph_vals = ph.values
+    pl_vals = pl.values
+
+    # BOS/CHoCH detection
+    bos_bull = np.zeros(n, dtype=bool)
+    bos_bear = np.zeros(n, dtype=bool)
+    choch_bull = np.zeros(n, dtype=bool)
+    choch_bear = np.zeros(n, dtype=bool)
+    last_swing_high = np.full(n, np.nan)
+    last_swing_low = np.full(n, np.nan)
+    trend = np.zeros(n, dtype=int)  # 1=bull, -1=bear
+
+    current_sh = np.nan
+    current_sl = np.nan
+    current_trend = 0
+
+    for i in range(1, n):
+        if not np.isnan(ph_vals[i]):
+            current_sh = ph_vals[i]
+        if not np.isnan(pl_vals[i]):
+            current_sl = pl_vals[i]
+
+        last_swing_high[i] = current_sh
+        last_swing_low[i] = current_sl
+
+        # Bullish breakout (close above last swing high)
+        if not np.isnan(current_sh) and c[i] > current_sh and c[i - 1] <= current_sh:
+            if current_trend == -1:
+                choch_bull[i] = True
+            else:
+                bos_bull[i] = True
+            current_trend = 1
+
+        # Bearish breakout (close below last swing low)
+        if not np.isnan(current_sl) and c[i] < current_sl and c[i - 1] >= current_sl:
+            if current_trend == 1:
+                choch_bear[i] = True
+            else:
+                bos_bear[i] = True
+            current_trend = -1
+
+        trend[i] = current_trend
+
+    # --- Order Blocks ---
+    bull_ob = np.full(n, np.nan)  # bullish OB top
+    bull_ob_low = np.full(n, np.nan)  # bullish OB bottom
+    bear_ob = np.full(n, np.nan)  # bearish OB top
+    bear_ob_low = np.full(n, np.nan)  # bearish OB bottom
+
+    for i in range(1, n):
+        if bos_bull[i] or choch_bull[i]:
+            # Last bearish candle before bullish breakout
+            for j in range(i - 1, max(i - 6, -1), -1):
+                if c[j] < o[j]:
+                    bull_ob[i] = h[j]
+                    bull_ob_low[i] = l[j]
+                    break
+        if bos_bear[i] or choch_bear[i]:
+            # Last bullish candle before bearish breakout
+            for j in range(i - 1, max(i - 6, -1), -1):
+                if c[j] > o[j]:
+                    bear_ob[i] = h[j]
+                    bear_ob_low[i] = l[j]
+                    break
+
+    # --- Fair Value Gaps ---
+    fvg_bull_top = np.full(n, np.nan)
+    fvg_bull_bot = np.full(n, np.nan)
+    fvg_bear_top = np.full(n, np.nan)
+    fvg_bear_bot = np.full(n, np.nan)
+
+    for i in range(2, n):
+        # Bullish FVG: low[i] > high[i-2]
+        if l[i] > h[i - 2]:
+            fvg_bull_top[i] = l[i]
+            fvg_bull_bot[i] = h[i - 2]
+        # Bearish FVG: high[i] < low[i-2]
+        if h[i] < l[i - 2]:
+            fvg_bear_top[i] = l[i - 2]
+            fvg_bear_bot[i] = h[i]
+
+    return {
+        "bos_bull": bos_bull, "bos_bear": bos_bear,
+        "choch_bull": choch_bull, "choch_bear": choch_bear,
+        "bull_ob": bull_ob, "bull_ob_low": bull_ob_low,
+        "bear_ob": bear_ob, "bear_ob_low": bear_ob_low,
+        "fvg_bull_top": fvg_bull_top, "fvg_bull_bot": fvg_bull_bot,
+        "fvg_bear_top": fvg_bear_top, "fvg_bear_bot": fvg_bear_bot,
+        "last_swing_high": last_swing_high, "last_swing_low": last_swing_low,
+    }
+
+
 def export_candles(json_file, output_file="chart.png"):
     # Read JSON
     with open(json_file, "r", encoding="utf-8") as f:
@@ -235,11 +337,11 @@ def export_candles(json_file, output_file="chart.png"):
     # ---------------- Pivots ---------------- #
     ph, pl = pivots(df, left=5, right=5)
 
-    # Carry forward last pivot high/low to draw horizontal lines
-    ph_line = ph.copy()
-    pl_line = pl.copy()
-    ph_line = ph_line.ffill()
-    pl_line = pl_line.ffill()
+    ph_line = ph.copy().ffill()
+    pl_line = pl.copy().ffill()
+
+    # ---------------- Smart Money ---------------- #
+    sm = smart_money(df, swing_length=5)
 
     ap = [
         mpf.make_addplot(st1_up, color="green", width=2),
@@ -249,13 +351,12 @@ def export_candles(json_file, output_file="chart.png"):
         mpf.make_addplot(st3_up, color="green", width=2),
         mpf.make_addplot(st3_dn, color="red",   width=2),
         mpf.make_addplot(rsi_scaled, color="blue", width=1.5),
-        mpf.make_addplot(ph_line, color="aqua",   width=2.5),
+        mpf.make_addplot(ph_line, color="aqua", width=2.5),
         mpf.make_addplot(pl_line, color="aqua", width=2.5),
         mpf.make_addplot(ph, type="scatter", marker="v", markersize=80, color="red"),
         mpf.make_addplot(pl, type="scatter", marker="^", markersize=80, color="green"),
     ]
 
-    # Get last direction for each SuperTrend
     d1 = dir1.iloc[-1]
     d2 = dir2.iloc[-1]
     d3 = dir3.iloc[-1]
@@ -264,24 +365,65 @@ def export_candles(json_file, output_file="chart.png"):
         df,
         type="candle",
         style=style,
-
         volume=True,
-
         addplot=ap,
-
         figsize=(20, 16),
-
         panel_ratios=(4, 1),
-
         tight_layout=True,
-
         xrotation=0,
-
         returnfig=True,
     )
 
-    # ---- Info Table (top-right) ---- #
     ax = axes[0]
+
+    # ---- Draw BOS/CHoCH labels ---- #
+    for i in range(len(df)):
+        if sm["bos_bull"][i]:
+            ax.text(i, df["High"].iloc[i], "BOS", fontsize=7, color="green",
+                    ha="center", va="bottom", fontweight="bold")
+        if sm["bos_bear"][i]:
+            ax.text(i, df["Low"].iloc[i], "BOS", fontsize=7, color="red",
+                    ha="center", va="top", fontweight="bold")
+        if sm["choch_bull"][i]:
+            ax.text(i, df["High"].iloc[i], "CHoCH", fontsize=7, color="lime",
+                    ha="center", va="bottom", fontweight="bold")
+        if sm["choch_bear"][i]:
+            ax.text(i, df["Low"].iloc[i], "CHoCH", fontsize=7, color="orange",
+                    ha="center", va="top", fontweight="bold")
+
+    # ---- Draw Order Blocks ---- #
+    for i in range(len(df)):
+        # Bullish Order Block
+        if not np.isnan(sm["bull_ob"][i]):
+            top = sm["bull_ob"][i]
+            bot = sm["bull_ob_low"][i]
+            rect = plt.Rectangle((i - 0.5, bot), 5, top - bot,
+                                 facecolor="#3179f5", alpha=0.15, edgecolor="#3179f5", linewidth=0.5)
+            ax.add_patch(rect)
+        # Bearish Order Block
+        if not np.isnan(sm["bear_ob"][i]):
+            top = sm["bear_ob"][i]
+            bot = sm["bear_ob_low"][i]
+            rect = plt.Rectangle((i - 0.5, bot), 5, top - bot,
+                                 facecolor="#f77c80", alpha=0.15, edgecolor="#f77c80", linewidth=0.5)
+            ax.add_patch(rect)
+
+    # ---- Draw Fair Value Gaps ---- #
+    for i in range(len(df)):
+        # Bullish FVG
+        if not np.isnan(sm["fvg_bull_top"][i]):
+            top = sm["fvg_bull_top"][i]
+            bot = sm["fvg_bull_bot"][i]
+            rect = plt.Rectangle((i - 0.5, bot), 3, top - bot,
+                                 facecolor="#00ff68", alpha=0.12, edgecolor="#00ff68", linewidth=0.5)
+            ax.add_patch(rect)
+        # Bearish FVG
+        if not np.isnan(sm["fvg_bear_top"][i]):
+            top = sm["fvg_bear_top"][i]
+            bot = sm["fvg_bear_bot"][i]
+            rect = plt.Rectangle((i - 0.5, bot), 3, top - bot,
+                                 facecolor="#ff0008", alpha=0.12, edgecolor="#ff0008", linewidth=0.5)
+            ax.add_patch(rect)
     box_props = dict(boxstyle="round,pad=0.4", facecolor="#1a1a2e", edgecolor="#555555", alpha=0.9)
 
     lines = [
