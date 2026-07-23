@@ -261,21 +261,7 @@ def export_candles(json_file, output_file="chart.png"):
         st_lines.append(f"  {lbl}  {arr}  {'BULL' if dd == 1 else 'BEAR'}")
     panel_box(ax, 0.01, 0.98, st_lines, "SUPERTREND")
 
-    # Legend
-    lg = [
-        f"  ───  SuperTrend 3x (Green/Red)",
-        f"  - -  Pivot High (Blue) / Low (Orange)",
-        f"",
-        f"  [BOS]     Break of Structure",
-        f"  [CHoCH]   Change of Character",
-        f"  ▓▓▓       Bullish OB (Blue)",
-        f"  ▓▓▓       Bearish OB (Red)",
-        f"  ▓▓▓       Bullish FVG (Cyan)",
-        f"  ▓▓▓       Bearish FVG (Red)",
-        f"",
-        f"  ───  RSI 14 (Purple) [Panel 2]",
-    ]
-    panel_box(ax, 0.99, 0.98, lg, "LEGEND")
+
 
     # RSI panel info
     rsi_now = rv.iloc[-1]
